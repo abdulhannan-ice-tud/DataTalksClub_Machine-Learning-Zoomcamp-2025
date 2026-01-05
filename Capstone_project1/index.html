@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ICU Mortality Predictor (FastAPI)</title>
+
+  <!-- Bootstrap 5 CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+
+  <style>
+    body {
+      background: radial-gradient(1200px 600px at 10% 10%, #e9f2ff 0%, transparent 55%),
+                  radial-gradient(900px 500px at 90% 20%, #efe9ff 0%, transparent 60%),
+                  #f8fafc;
+    }
+    .app-shell {
+      max-width: 1200px;
+    }
+    .hero-card {
+      border: 0;
+      box-shadow: 0 10px 30px rgba(2, 6, 23, 0.08);
+      background: rgba(255, 255, 255, 0.75);
+      backdrop-filter: blur(8px);
+    }
+    .soft-card {
+      border: 0;
+      box-shadow: 0 10px 25px rgba(2, 6, 23, 0.06);
+    }
+    .form-control, .form-select {
+      border-radius: 12px;
+    }
+    .btn {
+      border-radius: 12px;
+    }
+    .feature-card {
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 16px;
+      transition: transform 120ms ease, box-shadow 120ms ease;
+      background: #fff;
+    }
+    .feature-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 18px rgba(2, 6, 23, 0.06);
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.95rem;
+    }
+    pre {
+      border-radius: 16px;
+      margin: 0;
+      max-height: 380px;
+      overflow: auto;
+    }
+    .badge-soft {
+      background: rgba(37, 99, 235, 0.12);
+      color: #1d4ed8;
+      border: 1px solid rgba(37, 99, 235, 0.18);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container app-shell py-4 py-lg-5">
+
+    <!-- Header / Hero -->
+    <div class="card hero-card mb-4">
+      <div class="card-body p-4 p-lg-5">
+        <div class="d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
+          <div>
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span class="badge badge-soft rounded-pill px-3 py-2">FastAPI • ICU</span>
+              <span class="badge text-bg-light rounded-pill px-3 py-2">Probability + Class</span>
+            </div>
+            <h1 class="display-6 fw-bold mb-2">ICU Mortality Probability</h1>
+            <p class="text-secondary mb-0">
+              Fill the features → Submit → API returns <span class="mono">mortality_probability</span> + class.
+            </p>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button id="submitBtn" class="btn btn-primary px-4" onclick="submitForm()">
+              Submit
+            </button>
+            <button class="btn btn-outline-secondary px-4" onclick="fillDefaults()" title="Reset all fields to defaults">
+              Reset
+            </button>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="row g-3 mt-3">
+          <div class="col-12 col-lg-6">
+            <label for="baseUrl" class="form-label fw-semibold">Base URL</label>
+            <div class="input-group">
+              <span class="input-group-text">🌐</span>
+              <input id="baseUrl" type="text" class="form-control" value="http://127.0.0.1:8000" />
+            </div>
+            <div class="form-text">If your API runs elsewhere, change this.</div>
+          </div>
+
+          <div class="col-12 col-lg-6">
+            <label for="endpoint" class="form-label fw-semibold">Choose model endpoint</label>
+            <select id="endpoint" class="form-select">
+              <option value="/predict_XGBoost">/predict_XGBoost</option>
+              <option value="/predict_random_forest">/predict_random_forest</option>
+              <option value="/predict_decision_tree">/predict_decision_tree</option>
+            </select>
+            <div class="form-text">Select which model to query.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <!-- Form Grid -->
+      <div class="col-12 col-lg-7">
+        <div class="card soft-card">
+          <div class="card-header bg-white border-0 pt-4 px-4">
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <h5 class="mb-1 fw-bold">Patient Features</h5>
+                <p class="text-secondary mb-0">All values are numeric. AGE is integer.</p>
+              </div>
+              <span class="badge text-bg-light rounded-pill px-3 py-2">Auto-generated form</span>
+            </div>
+          </div>
+          <div class="card-body p-4">
+            <!-- We keep your original container + id -->
+            <div class="row g-3" id="formGrid"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result Panel -->
+      <div class="col-12 col-lg-5">
+        <div class="card soft-card">
+          <div class="card-header bg-white border-0 pt-4 px-4">
+            <h5 class="mb-0 fw-bold">Result</h5>
+          </div>
+          <div class="card-body p-4">
+            <div class="p-3 rounded-4 border mb-3 bg-light">
+              <div class="d-flex align-items-center justify-content-between">
+                <div class="text-secondary">mortality_probability</div>
+                <div class="fw-semibold mono" id="probText">–</div>
+              </div>
+              <hr class="my-2">
+              <div class="d-flex align-items-center justify-content-between">
+                <div class="text-secondary">predicted_mortality_inhospital</div>
+                <div class="fw-semibold mono" id="predText">–</div>
+              </div>
+              <hr class="my-2">
+              <div class="d-flex align-items-center justify-content-between">
+                <div class="text-secondary">model</div>
+                <div class="fw-semibold mono" id="modelText">–</div>
+              </div>
+            </div>
+
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <h6 class="mb-0 fw-bold">Raw JSON</h6>
+              <span class="badge text-bg-light rounded-pill px-3 py-2">Response</span>
+            </div>
+            <pre class="bg-dark text-light p-3 mono" id="rawJson">Click Submit...</pre>
+
+            <div class="alert alert-secondary mt-3 mb-0 small" role="alert">
+              Tip: If you get CORS errors, enable CORS in FastAPI and use the correct Base URL.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bootstrap JS (optional, but nice for components) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // --- Feature list (must match your API expected features)
+    const FEATURES = [
+      "GCS_max", "GCS_mean", "Lactate_min", "Lactate_max", "Lactate_mean",
+      "BUN_min", "BUN_mean", "Bilirubin_max", "Bilirubin_mean",
+      "AG_MEAN", "AG_MAX", "AG_MEDIAN", "AG_MIN", "AG_STD",
+      "SYSBP_MIN", "SYSBP_MEAN", "SYSBP_STD",
+      "DIASBP_MIN", "DIASBP_MEAN",
+      "AGE",
+      "RR_MEAN", "RR_STD", "RR_MAX",
+      "TEMP_STD", "TEMP_MIN",
+      "HR_MEAN", "HR_MAX",
+      "age_adj_comorbidity_score"
+    ];
+
+    // --- Defaults (same as your Pydantic defaults)
+    const DEFAULTS = {
+      GCS_max: 14.0, GCS_mean: 12.5,
+      Lactate_min: 1.2, Lactate_max: 3.8, Lactate_mean: 2.4,
+      BUN_min: 18.0, BUN_mean: 32.0,
+      Bilirubin_max: 2.1, Bilirubin_mean: 1.4,
+      AG_MEAN: 14.5, AG_MAX: 18.0, AG_MEDIAN: 14.0, AG_MIN: 12.0, AG_STD: 1.9,
+      SYSBP_MIN: 92.0, SYSBP_MEAN: 118.0, SYSBP_STD: 14.0,
+      DIASBP_MIN: 55.0, DIASBP_MEAN: 72.0,
+      AGE: 67,
+      RR_MEAN: 22.0, RR_STD: 4.1, RR_MAX: 30.0,
+      TEMP_STD: 0.6, TEMP_MIN: 36.4,
+      HR_MEAN: 96.0, HR_MAX: 128.0,
+      age_adj_comorbidity_score: 5.0
+    };
+
+    function buildForm() {
+      const grid = document.getElementById("formGrid");
+      grid.innerHTML = "";
+
+      for (const f of FEATURES) {
+        // Bootstrap column wrapper (UI only)
+        const col = document.createElement("div");
+        col.className = "col-12 col-md-6 col-xl-4";
+
+        const card = document.createElement("div");
+        card.className = "feature-card p-3 h-100";
+
+        const lab = document.createElement("label");
+        lab.className = "form-label fw-semibold";
+        lab.htmlFor = f;
+        lab.textContent = f;
+
+        const inp = document.createElement("input");
+        inp.className = "form-control";
+        inp.id = f;
+        inp.type = "number";
+        inp.step = (f === "AGE") ? "1" : "0.01";
+        inp.value = (DEFAULTS[f] ?? (f === "AGE" ? 0 : 0.0));
+
+        // Optional: a tiny helper text (UI only)
+        const help = document.createElement("div");
+        help.className = "form-text";
+        help.textContent = (f === "AGE") ? "Integer" : "Float";
+
+        card.appendChild(lab);
+        card.appendChild(inp);
+        card.appendChild(help);
+        col.appendChild(card);
+        grid.appendChild(col);
+      }
+    }
+
+    function fillDefaults() {
+      for (const f of FEATURES) {
+        const el = document.getElementById(f);
+        if (!el) continue;
+        el.value = (DEFAULTS[f] ?? "");
+      }
+      setResultUI(null);
+    }
+
+    function readPayload() {
+      const payload = {};
+      for (const f of FEATURES) {
+        const el = document.getElementById(f);
+        const v = el.value;
+
+        if (v === "" || v === null || Number.isNaN(Number(v))) {
+          throw new Error(`Missing/invalid value for: ${f}`);
+        }
+
+        payload[f] = (f === "AGE") ? parseInt(v) : parseFloat(v);
+      }
+      return payload;
+    }
+
+    function setResultUI(out) {
+      const probEl = document.getElementById("probText");
+      const predEl = document.getElementById("predText");
+      const modelEl = document.getElementById("modelText");
+      const rawEl  = document.getElementById("rawJson");
+
+      if (!out) {
+        probEl.textContent = "–";
+        predEl.textContent = "–";
+        modelEl.textContent = "–";
+        rawEl.textContent = "Click Submit...";
+        return;
+      }
+
+      rawEl.textContent = JSON.stringify(out, null, 2);
+      modelEl.textContent = (out.model ?? "unknown");
+
+      if (typeof out.mortality_probability === "number") {
+        probEl.textContent = out.mortality_probability.toFixed(8);
+      } else {
+        probEl.textContent = (out.mortality_probability ?? "n/a");
+      }
+
+      predEl.textContent = (out.predicted_mortality_inhospital ?? "n/a");
+    }
+
+    async function submitForm() {
+      const btn = document.getElementById("submitBtn");
+      btn.disabled = true;
+      btn.classList.add("disabled");
+
+      try {
+        const baseUrl = document.getElementById("baseUrl").value.replace(/\/$/, "");
+        const endpoint = document.getElementById("endpoint").value;
+        const url = baseUrl + endpoint;
+
+        const payload = readPayload();
+
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const text = await res.text();
+        let out;
+        try { out = JSON.parse(text); }
+        catch { out = { error: "Non-JSON response", status: res.status, text }; }
+
+        if (!res.ok) {
+          setResultUI(out);
+          return;
+        }
+
+        setResultUI(out);
+      } catch (err) {
+        setResultUI({ error: String(err) });
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove("disabled");
+      }
+    }
+
+    // Init
+    buildForm();
+    fillDefaults();
+  </script>
+</body>
+</html>
